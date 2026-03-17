@@ -7,17 +7,23 @@ class CryptoViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var lastUpdated: Date?
+    @Published var isOffline = false
     
     private let api = APIService.shared
     
-    var zarrate: Double = 18.50 // Default fallback
+    var zarrate: Double = 18.50
     
-    func fetchPrices() async {
+    func fetchPrices(for watchlist: WatchlistStore? = nil) async {
         isLoading = true
         errorMessage = nil
+        isOffline = false
         
         do {
-            async let cryptoTask = api.fetchCryptoPrices()
+            let ids = watchlist?.coinIds
+            
+            async let cryptoTask = ids != nil ? 
+                api.fetchCustomCoins(ids: ids!) : 
+                api.fetchCryptoPrices()
             async let zarTask = api.fetchZARRate()
             
             let (fetched, zar) = try await (cryptoTask, zarTask)
@@ -26,13 +32,21 @@ class CryptoViewModel: ObservableObject {
             lastUpdated = Date()
         } catch {
             errorMessage = error.localizedDescription
+            isOffline = true
+            
+            // Try offline cache
+            if let cached: [CryptoPrice] = OfflineCache.load(forKey: "crypto_prices") {
+                prices = cached
+                errorMessage = nil
+                isOffline = true
+            }
         }
         
         isLoading = false
     }
     
-    func refresh() async {
-        await fetchPrices()
+    func refresh(for watchlist: WatchlistStore? = nil) async {
+        await fetchPrices(for: watchlist)
     }
     
     var formattedLastUpdate: String {
