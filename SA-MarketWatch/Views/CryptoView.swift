@@ -2,6 +2,11 @@ import SwiftUI
 
 struct CryptoView: View {
     @EnvironmentObject var viewModel: CryptoViewModel
+    @EnvironmentObject var watchlist: WatchlistStore
+    @EnvironmentObject var alertStore: AlertStore
+    @State private var showSearch = false
+    @State private var showAlerts = false
+    @State private var triggeredAlert: PriceAlert?
     
     var body: some View {
         NavigationStack {
@@ -10,7 +15,7 @@ struct CryptoView: View {
                     // Header Card
                     headerCard
                     
-                    // Price List
+                    // Watchlist
                     if viewModel.isLoading && viewModel.prices.isEmpty {
                         ProgressView("Loading prices...")
                             .frame(maxWidth: .infinity, minHeight: 200)
@@ -19,6 +24,9 @@ struct CryptoView: View {
                     } else {
                         ForEach(viewModel.prices) { crypto in
                             CryptoCard(crypto: crypto)
+                                .onTapGesture {
+                                    // Future: detail view
+                                }
                         }
                     }
                 }
@@ -28,13 +36,69 @@ struct CryptoView: View {
             .navigationTitle("🇿🇦 Crypto in ZAR")
             .refreshable {
                 await viewModel.refresh()
+                checkAlerts()
             }
             .task {
                 if viewModel.prices.isEmpty {
                     await viewModel.fetchPrices()
                 }
             }
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showAlerts = true
+                    } label: {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "bell.fill")
+                            if !alertStore.alerts.isEmpty {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: 2, y: -2)
+                            }
+                        }
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showSearch = true
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                    }
+                }
+            }
+            .sheet(isPresented: $showSearch) {
+                CoinSearchView()
+            }
+            .sheet(isPresented: $showAlerts) {
+                AlertView()
+            }
+            .alert("🔔 Price Alert!", isPresented: Binding<Bool>(
+                get: { triggeredAlert != nil },
+                set: { if !$0 { triggeredAlert = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                if let alert = triggeredAlert {
+                    Text("\(alert.coinName) is now \(alert.isAbove ? "above" : "below") your target of \(formatPrice(alert.targetPrice))!")
+                }
+            }
         }
+    }
+    
+    private func checkAlerts() {
+        let triggered = alertStore.checkAlerts(prices: viewModel.prices)
+        if let first = triggered.first {
+            triggeredAlert = first
+        }
+    }
+    
+    private func formatPrice(_ price: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "ZAR"
+        return formatter.string(from: NSNumber(value: price)) ?? "R\(price)"
     }
     
     private var headerCard: some View {
@@ -90,7 +154,6 @@ struct CryptoCard: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Coin Image
             AsyncImage(url: URL(string: crypto.image)) { image in
                 image.resizable()
             } placeholder: {
@@ -98,7 +161,6 @@ struct CryptoCard: View {
             }
             .frame(width: 40, height: 40)
             
-            // Name & Symbol
             VStack(alignment: .leading, spacing: 2) {
                 Text(crypto.name)
                     .font(.body)
@@ -110,7 +172,6 @@ struct CryptoCard: View {
             
             Spacer()
             
-            // Price & Change
             VStack(alignment: .trailing, spacing: 2) {
                 Text(crypto.formattedPrice)
                     .font(.body)
@@ -135,4 +196,6 @@ struct CryptoCard: View {
 #Preview {
     CryptoView()
         .environmentObject(CryptoViewModel())
+        .environmentObject(WatchlistStore())
+        .environmentObject(AlertStore())
 }
