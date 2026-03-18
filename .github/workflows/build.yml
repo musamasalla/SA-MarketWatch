@@ -13,73 +13,50 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup Simulator & Build
+    - name: Build
       run: |
-        set -e
+        # Find latest iOS runtime
+        IOS_RUNTIME=$(xcrun simctl list runtimes -j | jq -r '.runtimes[] | select(.platform=="iOS" and .isAvailable==true) | .identifier' | sort -V | tail -1)
+        echo "Using iOS runtime: $IOS_RUNTIME"
         
-        echo "=== iOS Runtime ==="
-        RUNTIME="com.apple.CoreSimulator.SimRuntime.iOS-18-5"
-        echo "Using: $RUNTIME"
+        # Find an iPhone device type (prefer non-Pro, non-Plus, non-Max)
+        DEVICE_TYPE=$(xcrun simctl list devicetypes -j | jq -r '.deviceTypes[] | select(.name | test("iPhone.*[0-9]$") and test("iPhone") and not (.name | test("Pro|Plus|Max"))) | .identifier' | head -1)
         
-        echo "=== Device Type ==="
-        DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro"
-        echo "Using: $DEVICE_TYPE"
+        # If no non-Pro found, take any iPhone
+        if [ -z "$DEVICE_TYPE" ]; then
+          DEVICE_TYPE=$(xcrun simctl list devicetypes -j | jq -r '.deviceTypes[] | select(.name | test("iPhone")) | .identifier' | head -1)
+        fi
+        
+        echo "Using device type: $DEVICE_TYPE"
         
         # Create simulator
-        echo "Creating simulator..."
-        UDID=$(xcrun simctl create "CI_Test" "$DEVICE_TYPE" "$RUNTIME" 2>&1)
-        echo "Created: $UDID"
-        
-        if [ -z "$UDID" ] || [[ "$UDID" == *"Error"* ]]; then
-          echo "Creation failed, trying to list and reuse..."
-          # Try to find existing simulator
-          UDID=$(xcrun simctl list devices -j | python3 -c "
-          import json, sys
-          data = json.load(sys.stdin)
-          for devicetype in data.get('devices', {}).get('iOS 18-5', []):
-              if 'CI_Test' in devicetype.get('name', ''):
-                  print(devicetype['udid'])
-                  break
-          ") || echo ""
-        fi
-        
-        if [ -z "$UDID" ]; then
-          echo "Still no UDID, creating with different name..."
-          UDID=$(xcrun simctl create "Test_iPhone_16_Pro" "$DEVICE_TYPE" "$RUNTIME")
-        fi
-        
-        echo "Final UDID: $UDID"
+        SIMULATOR_UDID=$(xcrun simctl create "CI_Test_Sim" "$DEVICE_TYPE" "$IOS_RUNTIME")
+        echo "Created simulator with UDID: $SIMULATOR_UDID"
         
         # Boot simulator
-        echo "Booting simulator..."
-        xcrun simctl boot "$UDID" 2>/dev/null || echo "Boot command issued"
-        sleep 5
+        xcrun simctl boot "$SIMULATOR_UDID" >/dev/null 2>&1 || true
+        
+        # Wait a bit for boot
+        sleep 10
         
         # Verify it's booted
-        STATE=$(xcrun simctl list devices -j | python3 -c "
-        import json, sys
-        data = json.load(sys.stdin)
-        for devicetype in data.get('devices', {}).get('iOS 18-5', []):
-            if devicetype.get('udid') == '$UDID':
-                print(devicetype.get('state', 'Unknown'))
-                break
-        ")
+        STATE=$(xcrun simctl list devices -j | jq -r ".devices[\"$IOS_RUNTIME\"][] | select(.udid==\"$SIMULATOR_UDID\") | .state" 2>/dev/null || echo "unknown")
         echo "Simulator state: $STATE"
         
         # Build
-        echo "=== Building ==="
+        echo "Building..."
         xcodebuild build \
           -scheme SA-MarketWatch \
-          -destination "id=$UDID" \
+          -destination "id=$SIMULATOR_UDID" \
           -skipPackagePluginValidation \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO
         
         # Test
-        echo "=== Testing ==="
+        echo "Testing..."
         xcodebuild test \
           -scheme SA-MarketWatch \
-          -destination "id=$UDID" \
+          -destination "id=$SIMULATOR_UDID" \
           -skipPackagePluginValidation \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO || true
