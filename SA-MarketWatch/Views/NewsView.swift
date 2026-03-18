@@ -1,25 +1,42 @@
+//
+//  NewsView.swift
+//  SA Market Watch
+//
+//  Refactored with Design System
+//
+
 import SwiftUI
 
 struct NewsView: View {
     @EnvironmentObject var viewModel: NewsViewModel
+    @EnvironmentObject var haptic: HapticManager
     
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: SASpacing.md) {
                     // Category Filter
                     categoryFilter
                     
                     // News Items
-                    ForEach(viewModel.filteredItems) { item in
-                        NewsCard(item: item)
+                    if viewModel.filteredItems.isEmpty {
+                        SAEmptyState(
+                            icon: "newspaper",
+                            title: "No News",
+                            message: "No articles in this category yet"
+                        )
+                    } else {
+                        ForEach(viewModel.filteredItems) { item in
+                            NewsCard(item: item)
+                        }
                     }
                 }
-                .padding()
+                .padding(SASpacing.md)
             }
-            .background(Color(.systemGroupedBackground))
+            .saGroupedBackground()
             .navigationTitle("📰 Market News")
             .refreshable {
+                haptic.refresh()
                 await viewModel.refresh()
             }
         }
@@ -27,13 +44,14 @@ struct NewsView: View {
     
     private var categoryFilter: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: SASpacing.xs) {
                 // All button
                 FilterChip(
                     title: "All",
                     icon: "square.grid.2x2",
                     isSelected: viewModel.selectedCategory == nil
                 ) {
+                    haptic.selection()
                     viewModel.filter(by: nil)
                 }
                 
@@ -43,11 +61,12 @@ struct NewsView: View {
                         icon: category.icon,
                         isSelected: viewModel.selectedCategory == category
                     ) {
+                        haptic.selection()
                         viewModel.filter(by: category == viewModel.selectedCategory ? nil : category)
                     }
                 }
             }
-            .padding(.horizontal)
+            .padding(.horizontal, SASpacing.md)
         }
     }
 }
@@ -62,16 +81,22 @@ struct FilterChip: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.caption)
+                    .font(.saCaption)
                 Text(title)
-                    .font(.caption)
+                    .font(.saCaption)
                     .fontWeight(.medium)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, SASpacing.sm)
             .padding(.vertical, 6)
-            .background(isSelected ? Color.orange : Color(.systemBackground))
-            .foregroundColor(isSelected ? .white : .primary)
-            .cornerRadius(20)
+            .background(
+                Capsule()
+                    .fill(isSelected ? Color.saPrimary : Color.saCardBackground)
+            )
+            .foregroundColor(isSelected ? .white : .saTextPrimary)
+            .overlay(
+                Capsule()
+                    .stroke(isSelected ? Color.clear : Color.saSurfaceSecondary, lineWidth: 1)
+            )
         }
     }
 }
@@ -80,46 +105,53 @@ struct NewsCard: View {
     let item: NewsItem
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: item.category.icon)
-                    .font(.caption)
-                    .foregroundColor(colorForCategory)
-                Text(item.category.rawValue)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(colorForCategory)
-                Spacer()
-                Text(item.timeAgo)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+        SACard {
+            VStack(alignment: .leading, spacing: SASpacing.sm) {
+                // Header
+                HStack(spacing: SASpacing.xs) {
+                    Image(systemName: item.category.icon)
+                        .font(.saCaption)
+                        .foregroundColor(colorForCategory)
+                    
+                    Text(item.category.rawValue)
+                        .font(.saCaption)
+                        .fontWeight(.medium)
+                        .foregroundColor(colorForCategory)
+                    
+                    Spacer()
+                    
+                    Text(item.timeAgo)
+                        .font(.saCaption)
+                        .foregroundColor(.saTextTertiary)
+                }
+                
+                // Title
+                Text(item.title)
+                    .font(.saHeadingSmall)
+                    .foregroundColor(.saTextPrimary)
+                    .lineLimit(2)
+                
+                // Summary
+                Text(item.summary)
+                    .font(.saBodySmall)
+                    .foregroundColor(.saTextSecondary)
+                    .lineLimit(2)
+                
+                // Source
+                Text(item.source)
+                    .font(.saCaption)
+                    .foregroundColor(.saTextTertiary)
             }
-            
-            Text(item.title)
-                .font(.headline)
-                .lineLimit(2)
-            
-            Text(item.summary)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .lineLimit(2)
-            
-            Text(item.source)
-                .font(.caption2)
-                .foregroundColor(.secondary)
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
     }
     
     private var colorForCategory: Color {
         switch item.category {
-        case .crypto: return .orange
-        case .markets: return .blue
-        case .fuel: return .green
-        case .economy: return .purple
-        case .breaking: return .red
+        case .crypto: return .saBrightGold
+        case .markets: return .saInfo
+        case .fuel: return .saGreen
+        case .economy: return .saAccent
+        case .breaking: return .saDanger
         }
     }
 }
@@ -127,4 +159,5 @@ struct NewsCard: View {
 #Preview {
     NewsView()
         .environmentObject(NewsViewModel())
+        .environmentObject(HapticManager.shared)
 }

@@ -1,99 +1,203 @@
+//
+//  SettingsView.swift
+//  SA Market Watch
+//
+//  Refactored with Design System + AppState
+//
+
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("currency") private var currency = "zar"
-    @AppStorage("refreshInterval") private var refreshInterval = 60
-    @AppStorage("notificationsEnabled") private var notificationsEnabled = true
-    @AppStorage("hapticFeedback") private var hapticFeedback = true
-    @AppStorage("showOfflineIndicator") private var showOfflineIndicator = true
-    @State private var showingAbout = false
-    @State private var cacheSize = "Calculating..."
+    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var haptic: HapticManager
+    @EnvironmentObject var notificationManager: NotificationManager
     
-    let currencies = ["zar", "usd", "eur", "gbp", "btc"]
-    let refreshOptions = [(30, "30s"), (60, "1min"), (120, "2min"), (300, "5min")]
+    @State private var showingAbout = false
+    @State private var showingResetConfirm = false
+    @State private var cacheSize = "Calculating..."
     
     var body: some View {
         NavigationStack {
             List {
-                // Currency
-                Section("Currency") {
-                    Picker("Display Currency", selection: $currency) {
-                        Text("🇿🇦 ZAR").tag("zar")
-                        Text("🇺🇸 USD").tag("usd")
-                        Text("🇪🇺 EUR").tag("eur")
-                        Text("🇬🇧 GBP").tag("gbp")
-                        Text("₿ BTC").tag("btc")
+                // Currency Section
+                Section {
+                    Picker(selection: $appState.selectedCurrency) {
+                        ForEach(AppState.availableCurrencies, id: \.code) { currency in
+                            Text("\(currency.flag) \(currency.name)")
+                                .tag(currency.code)
+                        }
+                    } label: {
+                        HStack(spacing: SASpacing.xs) {
+                            Image(systemName: "coloncurrencysign.circle.fill")
+                                .foregroundColor(.saPrimary)
+                                .frame(width: 28)
+                            Text("Display Currency")
+                        }
                     }
+                } header: {
+                    Text("Currency")
                 }
                 
-                // Refresh
-                Section("Data") {
-                    Picker("Refresh Interval", selection: $refreshInterval) {
-                        ForEach(refreshOptions, id: \.0) { value, label in
-                            Text(label).tag(value)
+                // Data Section
+                Section {
+                    Picker(selection: $appState.refreshInterval) {
+                        ForEach(AppState.refreshIntervals, id: \.seconds) { interval in
+                            Text(interval.label).tag(interval.seconds)
+                        }
+                    } label: {
+                        HStack(spacing: SASpacing.xs) {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundColor(.saPrimary)
+                                .frame(width: 28)
+                            Text("Auto Refresh")
                         }
                     }
                     
                     HStack {
-                        Text("Cache Size")
+                        HStack(spacing: SASpacing.xs) {
+                            Image(systemName: "internaldrive.fill")
+                                .foregroundColor(.saPrimary)
+                                .frame(width: 28)
+                            Text("Cache Size")
+                        }
                         Spacer()
                         Text(cacheSize)
-                            .foregroundColor(.secondary)
+                            .font(.saCaption)
+                            .foregroundColor(.saTextSecondary)
                     }
                     
-                    Button("Clear Cache") {
-                        OfflineCache.clearAll()
-                        cacheSize = "0 KB"
+                    Button {
+                        haptic.medium()
+                        clearCache()
+                    } label: {
+                        HStack(spacing: SASpacing.xs) {
+                            Image(systemName: "trash")
+                                .frame(width: 28)
+                            Text("Clear Cache")
+                        }
                     }
-                    .foregroundColor(.red)
+                    .foregroundColor(.saDanger)
+                } header: {
+                    Text("Data")
                 }
                 
-                // Notifications
-                Section("Notifications") {
-                    Toggle("Price Alerts", isOn: $notificationsEnabled)
-                    Toggle("Haptic Feedback", isOn: $hapticFeedback)
-                    Toggle("Show Offline Indicator", isOn: $showOfflineIndicator)
+                // Notifications Section
+                Section {
+                    Toggle(isOn: $appState.notificationsEnabled) {
+                        HStack(spacing: SASpacing.xs) {
+                            Image(systemName: "bell.fill")
+                                .foregroundColor(.saPrimary)
+                                .frame(width: 28)
+                            Text("Price Alerts")
+                        }
+                    }
+                    .onChange(of: appState.notificationsEnabled) { _, newValue in
+                        if newValue {
+                            Task {
+                                await notificationManager.requestPermission()
+                            }
+                        }
+                    }
+                    
+                    Toggle(isOn: $appState.hapticFeedback) {
+                        HStack(spacing: SASpacing.xs) {
+                            Image(systemName: "hand.tap.fill")
+                                .foregroundColor(.saPrimary)
+                                .frame(width: 28)
+                            Text("Haptic Feedback")
+                        }
+                    }
+                } header: {
+                    Text("Notifications")
                 }
                 
-                // About
-                Section("About") {
+                // Appearance Section
+                Section {
+                    Toggle(isOn: $appState.isDarkMode) {
+                        HStack(spacing: SASpacing.xs) {
+                            Image(systemName: appState.isDarkMode ? "moon.fill" : "sun.max.fill")
+                                .foregroundColor(.saPrimary)
+                                .frame(width: 28)
+                            Text("Dark Mode")
+                        }
+                    }
+                } header: {
+                    Text("Appearance")
+                }
+                
+                // About Section
+                Section {
                     HStack {
-                        Text("Version")
+                        HStack(spacing: SASpacing.xs) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.saPrimary)
+                                .frame(width: 28)
+                            Text("Version")
+                        }
                         Spacer()
-                        Text("2.0.0")
-                            .foregroundColor(.secondary)
+                        Text("2.1.0")
+                            .font(.saCaption)
+                            .foregroundColor(.saTextSecondary)
                     }
                     
                     HStack {
-                        Text("Built by")
+                        HStack(spacing: SASpacing.xs) {
+                            Image(systemName: "hammer.fill")
+                                .foregroundColor(.saPrimary)
+                                .frame(width: 28)
+                            Text("Built by")
+                        }
                         Spacer()
                         Text("Greg AI 🦾")
-                            .foregroundColor(.secondary)
+                            .font(.saCaption)
+                            .foregroundColor(.saTextSecondary)
                     }
                     
-                    Button("About SA Market Watch") {
+                    Button {
+                        haptic.light()
                         showingAbout = true
+                    } label: {
+                        HStack(spacing: SASpacing.xs) {
+                            Image(systemName: "app.fill")
+                                .frame(width: 28)
+                            Text("About SA Market Watch")
+                        }
                     }
+                    .foregroundColor(.saPrimary)
+                } header: {
+                    Text("About")
                 }
                 
-                // Danger Zone
+                // Reset Section
                 Section {
-                    Button("Reset Watchlist to Defaults") {
-                        // Handled by WatchlistStore
+                    Button {
+                        haptic.warning()
+                        showingResetConfirm = true
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("Reset All Settings")
+                                .fontWeight(.medium)
+                            Spacer()
+                        }
                     }
-                    .foregroundColor(.orange)
-                    
-                    Button("Reset All Settings") {
-                        resetSettings()
-                    }
-                    .foregroundColor(.red)
-                } header: {
-                    Text("Reset")
+                    .foregroundColor(.saDanger)
                 }
             }
             .navigationTitle("⚙️ Settings")
             .sheet(isPresented: $showingAbout) {
                 AboutView()
+            }
+            .confirmationDialog(
+                "Reset all settings to defaults?",
+                isPresented: $showingResetConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Reset All Settings", role: .destructive) {
+                    haptic.heavy()
+                    appState.resetToDefaults()
+                }
+                Button("Cancel", role: .cancel) {}
             }
             .onAppear {
                 calculateCacheSize()
@@ -111,69 +215,89 @@ struct SettingsView: View {
         }
     }
     
-    private func resetSettings() {
-        currency = "zar"
-        refreshInterval = 60
-        notificationsEnabled = true
-        hapticFeedback = true
-        showOfflineIndicator = true
+    private func clearCache() {
+        OfflineCache.clearAll()
+        cacheSize = "0 KB"
     }
 }
 
+// MARK: - About View
+
 struct AboutView: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var haptic: HapticManager
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Spacer()
-                
-                // App Icon Placeholder
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(LinearGradient(colors: [.orange, .red], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 100, height: 100)
-                    .overlay(
-                        Text("🇿🇦")
-                            .font(.system(size: 50))
-                    )
-                
-                Text("SA Market Watch")
-                    .font(.title)
-                    .fontWeight(.bold)
-                
-                Text("Version 2.0.0")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Text("Built from scratch by Greg AI 🦾\nNo human wrote a single line of code.")
-                    .font(.body)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
-                
-                VStack(alignment: .leading, spacing: 12) {
-                    FeatureRow(icon: "chart.line.uptrend.xyaxis", text: "Live crypto prices in ZAR")
-                    FeatureRow(icon: "bell.fill", text: "Price alerts & notifications")
-                    FeatureRow(icon: "magnifyingglass", text: "Search 10,000+ coins")
-                    FeatureRow(icon: "fuelpump.fill", text: "SA fuel price predictions")
-                    FeatureRow(icon: "newspaper.fill", text: "Curated market news")
-                    FeatureRow(icon: "wifi.slash", text: "Offline mode support")
+            ScrollView {
+                VStack(spacing: SASpacing.xl) {
+                    Spacer(minLength: SASpacing.xxl)
+                    
+                    // App Icon
+                    RoundedRectangle(cornerRadius: SARadius.xl)
+                        .fill(
+                            LinearGradient(
+                                colors: [.saDeepGreen, .saForest],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 100, height: 100)
+                        .overlay(Text("🇿🇦").font(.system(size: 50)))
+                        .saShadowMedium()
+                    
+                    VStack(spacing: SASpacing.xs) {
+                        Text("SA Market Watch")
+                            .font(.saDisplayMedium)
+                            .foregroundColor(.saTextPrimary)
+                        
+                        Text("Version 2.1.0")
+                            .font(.saCaption)
+                            .foregroundColor(.saTextSecondary)
+                    }
+                    
+                    Text("Built from scratch by Greg AI 🦾\nNo human wrote a single line of code.")
+                        .font(.saBodyMedium)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.saTextSecondary)
+                    
+                    // Features
+                    SACard {
+                        VStack(spacing: SASpacing.md) {
+                            FeatureRow(icon: "chart.line.uptrend.xyaxis", text: "Live crypto prices in ZAR")
+                            FeatureRow(icon: "bell.fill", text: "Price alerts & notifications")
+                            FeatureRow(icon: "magnifyingglass", text: "Search 10,000+ coins")
+                            FeatureRow(icon: "fuelpump.fill", text: "SA fuel price predictions")
+                            FeatureRow(icon: "newspaper.fill", text: "Curated market news")
+                            FeatureRow(icon: "wifi.slash", text: "Offline mode support")
+                            FeatureRow(icon: "hand.tap.fill", text: "Haptic feedback")
+                            FeatureRow(icon: "moon.fill", text: "Dark mode")
+                        }
+                    }
+                    
+                    VStack(spacing: SASpacing.xs) {
+                        Text("Powered by CoinGecko API")
+                            .font(.saCaption)
+                            .foregroundColor(.saTextTertiary)
+                        
+                        Text("© 2026 Greg AI. All rights reserved.")
+                            .font(.saCaption)
+                            .foregroundColor(.saTextTertiary)
+                    }
+                    
+                    Spacer(minLength: SASpacing.xl)
                 }
-                .padding(.horizontal)
-                
-                Spacer()
-                
-                Text("Powered by CoinGecko API")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                Text("© 2026 Greg AI. All rights reserved.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                .padding(SASpacing.lg)
             }
-            .padding()
+            .saBackground()
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        haptic.light()
+                        dismiss()
+                    }
+                    .font(.saButton)
+                    .foregroundColor(.saPrimary)
                 }
             }
         }
@@ -185,16 +309,23 @@ struct FeatureRow: View {
     let text: String
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: SASpacing.sm) {
             Image(systemName: icon)
-                .foregroundColor(.orange)
+                .foregroundColor(.saPrimary)
                 .frame(width: 24)
+            
             Text(text)
-                .font(.subheadline)
+                .font(.saBodyMedium)
+                .foregroundColor(.saTextPrimary)
+            
+            Spacer()
         }
     }
 }
 
 #Preview {
     SettingsView()
+        .environmentObject(AppState())
+        .environmentObject(HapticManager.shared)
+        .environmentObject(NotificationManager.shared)
 }

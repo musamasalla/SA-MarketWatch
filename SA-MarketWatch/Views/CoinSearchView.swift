@@ -1,31 +1,45 @@
+//
+//  CoinSearchView.swift
+//  SA Market Watch
+//
+//  Refactored with Design System
+//
+
 import SwiftUI
 
 struct CoinSearchView: View {
     @StateObject private var searchVM = CoinSearchViewModel()
     @EnvironmentObject var watchlist: WatchlistStore
+    @EnvironmentObject var haptic: HapticManager
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
         NavigationStack {
             VStack {
                 if searchVM.isSearching {
-                    ProgressView("Searching...")
+                    SALoadingView(message: "Searching...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if searchVM.results.isEmpty && !searchVM.query.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.largeTitle)
-                            .foregroundColor(.secondary)
-                        Text("No coins found")
-                            .font(.headline)
-                        Text("Try a different search term")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                    SAEmptyState(
+                        icon: "magnifyingglass",
+                        title: "No Coins Found",
+                        message: "Try a different search term"
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if searchVM.results.isEmpty {
+                    SAEmptyState(
+                        icon: "sparkle.magnifyingglass",
+                        title: "Search Coins",
+                        message: "Search from over 10,000 coins to add to your watchlist"
+                    )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List(searchVM.results) { coin in
-                        CoinSearchRow(coin: coin, isAdded: watchlist.coins.contains(where: { $0.id == coin.id })) {
+                        CoinSearchRow(
+                            coin: coin,
+                            isAdded: watchlist.coins.contains(where: { $0.id == coin.id })
+                        ) {
+                            haptic.success()
                             let watchlistCoin = WatchlistCoin(id: coin.id, name: coin.name, symbol: coin.symbol)
                             watchlist.add(watchlistCoin)
                         }
@@ -33,11 +47,17 @@ struct CoinSearchView: View {
                     .listStyle(.plain)
                 }
             }
+            .saBackground()
             .navigationTitle("Add Coin")
             .searchable(text: $searchVM.query, prompt: "Search coins...")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        haptic.light()
+                        dismiss()
+                    }
+                    .font(.saButton)
+                    .foregroundColor(.saPrimary)
                 }
             }
         }
@@ -50,33 +70,37 @@ struct CoinSearchRow: View {
     let onAdd: () -> Void
     
     var body: some View {
-        HStack {
+        HStack(spacing: SASpacing.sm) {
             AsyncImage(url: URL(string: coin.thumb)) { image in
                 image.resizable()
             } placeholder: {
-                Circle().fill(Color.gray.opacity(0.3))
+                Circle().fill(Color.saSurfaceSecondary)
             }
-            .frame(width: 32, height: 32)
+            .frame(width: 36, height: 36)
             
-            VStack(alignment: .leading) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(coin.name)
-                    .font(.body)
+                    .font(.saBodyMedium)
+                    .fontWeight(.medium)
+                    .foregroundColor(.saTextPrimary)
+                
                 Text(coin.symbol.uppercased())
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.saTicker)
+                    .foregroundColor(.saTextSecondary)
             }
             
             Spacer()
             
             if let rank = coin.marketCapRank {
                 Text("#\(rank)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.saCaption)
+                    .foregroundColor(.saTextTertiary)
             }
             
             Button(action: onAdd) {
-                Image(systemName: isAdded ? "checkmark.circle.fill" : "plus.circle")
-                    .foregroundColor(isAdded ? .green : .blue)
+                Image(systemName: isAdded ? "checkmark.circle.fill" : "plus.circle.fill")
+                    .font(.title3)
+                    .foregroundColor(isAdded ? .saSuccess : .saPrimary)
             }
             .disabled(isAdded)
         }
@@ -93,7 +117,6 @@ class CoinSearchViewModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     
     init() {
-        // Debounced search
         Task {
             for await _ in $query.values.debounce(for: .milliseconds(300), scheduler: DispatchQueue.main) {
                 guard !query.isEmpty else {
@@ -110,7 +133,11 @@ class CoinSearchViewModel: ObservableObject {
         searchTask = Task {
             isSearching = true
             
-            guard let url = URL(string: "https://api.coingecko.com/api/v3/search?query=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") else { return }
+            guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                  let url = URL(string: "https://api.coingecko.com/api/v3/search?query=\(encoded)") else {
+                isSearching = false
+                return
+            }
             
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
@@ -132,4 +159,5 @@ class CoinSearchViewModel: ObservableObject {
 #Preview {
     CoinSearchView()
         .environmentObject(WatchlistStore())
+        .environmentObject(HapticManager.shared)
 }

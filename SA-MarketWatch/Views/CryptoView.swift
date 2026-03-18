@@ -1,40 +1,80 @@
+//
+//  CryptoView.swift
+//  SA Market Watch
+//
+//  Refactored with Design System
+//
+
 import SwiftUI
 
 struct CryptoView: View {
     @EnvironmentObject var viewModel: CryptoViewModel
     @EnvironmentObject var watchlist: WatchlistStore
     @EnvironmentObject var alertStore: AlertStore
+    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var haptic: HapticManager
+    @EnvironmentObject var network: NetworkMonitor
+    
     @State private var showSearch = false
     @State private var showAlerts = false
     @State private var triggeredAlert: PriceAlert?
+    @State private var searchText = ""
+    
+    var filteredPrices: [CryptoPrice] {
+        if searchText.isEmpty {
+            return viewModel.prices
+        }
+        return viewModel.prices.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.symbol.localizedCaseInsensitiveContains(searchText)
+        }
+    }
     
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
-                    // Header Card
-                    headerCard
+                VStack(spacing: SASpacing.md) {
+                    // Market Overview Card
+                    marketOverviewCard
                     
-                    // Watchlist
+                    // Inline Search
+                    if !viewModel.prices.isEmpty {
+                        SASearchBar(text: $searchText, placeholder: "Search coins...")
+                    }
+                    
+                    // Content
                     if viewModel.isLoading && viewModel.prices.isEmpty {
-                        ProgressView("Loading prices...")
-                            .frame(maxWidth: .infinity, minHeight: 200)
-                    } else if let error = viewModel.errorMessage {
-                        errorView(error)
+                        SALoadingView(message: "Fetching latest prices...")
+                    } else if let error = viewModel.errorMessage, viewModel.prices.isEmpty {
+                        SAErrorView(message: error) {
+                            Task { await viewModel.fetchPrices() }
+                        }
+                    } else if filteredPrices.isEmpty && !searchText.isEmpty {
+                        SAEmptyState(
+                            icon: "magnifyingglass",
+                            title: "No Results",
+                            message: "No coins matching '\(searchText)'"
+                        )
+                    } else if filteredPrices.isEmpty {
+                        SAEmptyState(
+                            icon: "star.slash",
+                            title: "Watchlist Empty",
+                            message: "Add coins to start tracking prices",
+                            buttonTitle: "Add Coins",
+                            buttonAction: { showSearch = true }
+                        )
                     } else {
-                        ForEach(viewModel.prices) { crypto in
+                        ForEach(filteredPrices) { crypto in
                             CryptoCard(crypto: crypto)
-                                .onTapGesture {
-                                    // Future: detail view
-                                }
                         }
                     }
                 }
-                .padding()
+                .padding(SASpacing.md)
             }
-            .background(Color(.systemGroupedBackground))
+            .saGroupedBackground()
             .navigationTitle("🇿🇦 Crypto in ZAR")
             .refreshable {
+                haptic.refresh()
                 await viewModel.refresh()
                 checkAlerts()
             }
@@ -46,13 +86,15 @@ struct CryptoView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
+                        haptic.light()
                         showAlerts = true
                     } label: {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: "bell.fill")
+                                .foregroundColor(.saPrimary)
                             if !alertStore.alerts.isEmpty {
                                 Circle()
-                                    .fill(Color.red)
+                                    .fill(Color.saDanger)
                                     .frame(width: 8, height: 8)
                                     .offset(x: 2, y: -2)
                             }
@@ -62,9 +104,11 @@ struct CryptoView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
+                        haptic.light()
                         showSearch = true
                     } label: {
                         Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.saPrimary)
                     }
                 }
             }
@@ -78,7 +122,7 @@ struct CryptoView: View {
                 get: { triggeredAlert != nil },
                 set: { if !$0 { triggeredAlert = nil } }
             )) {
-                Button("OK", role: .cancel) {}
+                Button("OK", role: .cancel) { haptic.light() }
             } message: {
                 if let alert = triggeredAlert {
                     Text("\(alert.coinName) is now \(alert.isAbove ? "above" : "below") your target of \(formatPrice(alert.targetPrice))!")
@@ -91,105 +135,105 @@ struct CryptoView: View {
         let triggered = alertStore.checkAlerts(prices: viewModel.prices)
         if let first = triggered.first {
             triggeredAlert = first
+            haptic.alertTriggered()
         }
     }
     
     private func formatPrice(_ price: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "ZAR"
-        return formatter.string(from: NSNumber(value: price)) ?? "R\(price)"
+        price.zarString
     }
     
-    private var headerCard: some View {
-        VStack(spacing: 8) {
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("USD/ZAR")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(String(format: "R%.2f", viewModel.zarrate))
-                        .font(.title2)
-                        .fontWeight(.bold)
+    // MARK: - Market Overview Card
+    
+    private var marketOverviewCard: some View {
+        SACard {
+            VStack(spacing: SASpacing.sm) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("USD / ZAR")
+                            .font(.saCaption)
+                            .foregroundColor(.saTextSecondary)
+                        
+                        Text(String(format: "R%.2f", viewModel.zarrate))
+                            .font(.saPriceLarge)
+                            .foregroundColor(.saTextPrimary)
+                    }
+                    
+                    Spacer()
+                    
+                    VStack(alignment: .trailing, spacing: 4) {
+                        SAMarketStatusBadge(isOnline: !viewModel.isOffline)
+                        
+                        Text(viewModel.formattedLastUpdate)
+                            .font(.saCaption)
+                            .foregroundColor(.saTextSecondary)
+                    }
                 }
-                Spacer()
-                VStack(alignment: .trailing) {
-                    Text("Last updated")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(viewModel.formattedLastUpdate)
-                        .font(.caption)
-                        .fontWeight(.medium)
+                
+                if viewModel.isOffline {
+                    HStack(spacing: 4) {
+                        Image(systemName: "info.circle")
+                            .font(.saCaption)
+                        Text("Showing cached prices")
+                            .font(.saCaption)
+                    }
+                    .foregroundColor(.saWarning)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
                 }
             }
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-    }
-    
-    private func errorView(_ message: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.largeTitle)
-                .foregroundColor(.orange)
-            Text("Failed to load prices")
-                .font(.headline)
-            Text(message)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-            Button("Retry") {
-                Task { await viewModel.fetchPrices() }
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, minHeight: 200)
     }
 }
 
+// MARK: - Crypto Card
+
 struct CryptoCard: View {
     let crypto: CryptoPrice
+    @EnvironmentObject var haptic: HapticManager
     
     var body: some View {
-        HStack(spacing: 12) {
-            AsyncImage(url: URL(string: crypto.image)) { image in
-                image.resizable()
-            } placeholder: {
-                Circle().fill(Color.gray.opacity(0.3))
-            }
-            .frame(width: 40, height: 40)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(crypto.name)
-                    .font(.body)
-                    .fontWeight(.medium)
-                Text(crypto.symbol.uppercased())
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(crypto.formattedPrice)
-                    .font(.body)
-                    .fontWeight(.semibold)
+        SAMarketCard(isPositive: crypto.priceChangePercentage24h >= 0 ? true : crypto.priceChangePercentage24h < 0 ? false : nil) {
+            HStack(spacing: SASpacing.sm) {
+                // Coin Image
+                AsyncImage(url: URL(string: crypto.image)) { image in
+                    image.resizable()
+                } placeholder: {
+                    Circle()
+                        .fill(Color.saSurfaceSecondary)
+                        .overlay(
+                            Text(String(crypto.symbol.prefix(1)).uppercased())
+                                .font(.saTicker)
+                                .foregroundColor(.saTextTertiary)
+                        )
+                }
+                .frame(width: 42, height: 42)
                 
-                Text(crypto.formattedChange)
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(crypto.isPositive ? Color.green : Color.red)
-                    .cornerRadius(4)
+                // Coin Info
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(crypto.name)
+                        .font(.saBodyLarge)
+                        .fontWeight(.medium)
+                        .foregroundColor(.saTextPrimary)
+                        .lineLimit(1)
+                    
+                    Text(crypto.symbol.uppercased())
+                        .font(.saTicker)
+                        .foregroundColor(.saTextSecondary)
+                }
+                
+                Spacer()
+                
+                // Price Info
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(crypto.formattedPrice)
+                        .font(.saPrice)
+                        .foregroundColor(.saTextPrimary)
+                    
+                    SAPriceChangeBadge(change: crypto.priceChangePercentage24h)
+                }
             }
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
     }
 }
 
@@ -198,4 +242,7 @@ struct CryptoCard: View {
         .environmentObject(CryptoViewModel())
         .environmentObject(WatchlistStore())
         .environmentObject(AlertStore())
+        .environmentObject(AppState())
+        .environmentObject(HapticManager.shared)
+        .environmentObject(NetworkMonitor.shared)
 }

@@ -1,32 +1,32 @@
+//
+//  AlertView.swift
+//  SA Market Watch
+//
+//  Refactored with Design System
+//
+
 import SwiftUI
 
 struct AlertView: View {
     @EnvironmentObject var alertStore: AlertStore
     @EnvironmentObject var cryptoVM: CryptoViewModel
+    @EnvironmentObject var haptic: HapticManager
     @State private var showingCreate = false
     
     var body: some View {
         NavigationStack {
             Group {
                 if alertStore.alerts.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: "bell.slash")
-                            .font(.system(size: 48))
-                            .foregroundColor(.secondary)
-                        Text("No Alerts Set")
-                            .font(.headline)
-                        Text("Create price alerts to get notified\nwhen coins hit your targets")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                        
-                        Button("Create Alert") {
+                    SAEmptyState(
+                        icon: "bell.slash",
+                        title: "No Alerts Set",
+                        message: "Create price alerts to get notified when coins hit your targets",
+                        buttonTitle: "Create Alert",
+                        buttonAction: {
+                            haptic.light()
                             showingCreate = true
                         }
-                        .buttonStyle(.borderedProminent)
-                        .padding(.top)
-                    }
-                    .padding()
+                    )
                 } else {
                     List {
                         ForEach(alertStore.alerts) { alert in
@@ -34,6 +34,7 @@ struct AlertView: View {
                         }
                         .onDelete { indexSet in
                             for index in indexSet {
+                                haptic.medium()
                                 alertStore.remove(alertStore.alerts[index])
                             }
                         }
@@ -45,9 +46,11 @@ struct AlertView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
+                        haptic.light()
                         showingCreate = true
                     } label: {
                         Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.saPrimary)
                     }
                 }
             }
@@ -63,39 +66,45 @@ struct AlertRow: View {
     @EnvironmentObject var alertStore: AlertStore
     
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: SASpacing.sm) {
+            // Direction indicator
+            Image(systemName: alert.isAbove ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                .font(.title2)
+                .foregroundColor(alert.isAbove ? .saBull : .saBear)
+            
+            VStack(alignment: .leading, spacing: 2) {
                 Text(alert.coinName)
-                    .font(.headline)
-                Text(alert.isAbove ? "↑ Above" : "↓ Below")
-                    .font(.caption)
-                    .foregroundColor(alert.isAbove ? .green : .red)
+                    .font(.saBodyLarge)
+                    .fontWeight(.medium)
+                    .foregroundColor(.saTextPrimary)
+                
+                Text(alert.isAbove ? "Above target" : "Below target")
+                    .font(.saCaption)
+                    .foregroundColor(alert.isAbove ? .saBull : .saBear)
             }
             
             Spacer()
             
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: 2) {
                 Text(formatPrice(alert.targetPrice, currency: alert.currency))
-                    .font(.body)
-                    .fontWeight(.bold)
+                    .font(.saPrice)
+                    .foregroundColor(.saTextPrimary)
                 
                 if alert.isTriggered {
                     Text("TRIGGERED")
-                        .font(.caption2)
+                        .font(.saCaption)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.orange)
+                        .background(Color.saWarning)
                         .cornerRadius(4)
                 } else if alert.isActive {
-                    Text("Active")
-                        .font(.caption2)
-                        .foregroundColor(.green)
+                    SAMarketStatusBadge(isOnline: true)
                 } else {
                     Text("Paused")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                        .font(.saCaption)
+                        .foregroundColor(.saTextTertiary)
                 }
             }
         }
@@ -111,10 +120,10 @@ struct AlertRow: View {
             Button {
                 alertStore.toggle(alert)
             } label: {
-                Label(alert.isActive ? "Pause" : "Resume", 
+                Label(alert.isActive ? "Pause" : "Resume",
                       systemImage: alert.isActive ? "pause.circle" : "play.circle")
             }
-            .tint(.blue)
+            .tint(.saInfo)
         }
     }
     
@@ -122,6 +131,7 @@ struct AlertRow: View {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = currency.uppercased()
+        formatter.maximumFractionDigits = 2
         return formatter.string(from: NSNumber(value: price)) ?? "\(price)"
     }
 }
@@ -129,6 +139,7 @@ struct AlertRow: View {
 struct CreateAlertView: View {
     @EnvironmentObject var cryptoVM: CryptoViewModel
     @EnvironmentObject var alertStore: AlertStore
+    @EnvironmentObject var haptic: HapticManager
     @Environment(\.dismiss) var dismiss
     
     @State private var selectedCoin: CryptoPrice?
@@ -138,11 +149,11 @@ struct CreateAlertView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Coin") {
+                Section("Select Coin") {
                     if cryptoVM.prices.isEmpty {
-                        Text("Loading coins...")
+                        SALoadingView(message: "Loading coins...")
                     } else {
-                        Picker("Select Coin", selection: $selectedCoin) {
+                        Picker("Coin", selection: $selectedCoin) {
                             Text("Choose a coin").tag(nil as CryptoPrice?)
                             ForEach(cryptoVM.prices) { coin in
                                 Text("\(coin.name) (\(coin.symbol.uppercased()))")
@@ -156,9 +167,10 @@ struct CreateAlertView: View {
                     Section("Current Price") {
                         HStack {
                             Text(coin.name)
+                                .font(.saBodyMedium)
                             Spacer()
                             Text(coin.formattedPrice)
-                                .fontWeight(.bold)
+                                .font(.saPrice)
                         }
                     }
                     
@@ -168,17 +180,21 @@ struct CreateAlertView: View {
                             Text("Below").tag(false)
                         }
                         .pickerStyle(.segmented)
+                        .onChange(of: isAbove) { _, _ in haptic.selection() }
                         
                         HStack {
                             Text("ZAR")
-                                .foregroundColor(.secondary)
+                                .font(.saBodyMedium)
+                                .foregroundColor(.saTextSecondary)
                             TextField("Target price", text: $targetPrice)
                                 .keyboardType(.decimalPad)
+                                .font(.saBodyLarge)
                         }
                     }
                     
                     Section {
-                        Button("Create Alert") {
+                        Button {
+                            haptic.success()
                             if let price = Double(targetPrice), let coin = selectedCoin {
                                 let alert = PriceAlert(
                                     coinId: coin.id,
@@ -190,6 +206,13 @@ struct CreateAlertView: View {
                                 alertStore.add(alert)
                                 dismiss()
                             }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("Create Alert")
+                                    .font(.saButton)
+                                Spacer()
+                            }
                         }
                         .disabled(Double(targetPrice) == nil)
                     }
@@ -198,7 +221,10 @@ struct CreateAlertView: View {
             .navigationTitle("New Alert")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        haptic.light()
+                        dismiss()
+                    }
                 }
             }
         }
@@ -209,4 +235,5 @@ struct CreateAlertView: View {
     AlertView()
         .environmentObject(AlertStore())
         .environmentObject(CryptoViewModel())
+        .environmentObject(HapticManager.shared)
 }

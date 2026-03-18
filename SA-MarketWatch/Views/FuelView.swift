@@ -1,70 +1,89 @@
+//
+//  FuelView.swift
+//  SA Market Watch
+//
+//  Refactored with Design System
+//
+
 import SwiftUI
 
 struct FuelView: View {
     @EnvironmentObject var viewModel: FuelViewModel
+    @EnvironmentObject var haptic: HapticManager
     
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: SASpacing.md) {
                     // Summary Card
                     summaryCard
                     
                     // Price List
+                    SASectionHeader(
+                        title: "Current Prices",
+                        subtitle: "Gauteng pump prices"
+                    )
+                    .padding(.top, SASpacing.xs)
+                    
                     ForEach(viewModel.prices) { fuel in
                         FuelCard(fuel: fuel)
                     }
                     
-                    // Info
+                    // Info Card
                     infoCard
                 }
-                .padding()
+                .padding(SASpacing.md)
             }
-            .background(Color(.systemGroupedBackground))
+            .saGroupedBackground()
             .navigationTitle("⛽ Fuel Prices")
         }
     }
     
     private var summaryCard: some View {
-        VStack(spacing: 12) {
-            HStack {
+        SACard {
+            HStack(spacing: SASpacing.md) {
+                // Icon
                 Image(systemName: viewModel.isGoodNews ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
-                    .font(.largeTitle)
-                    .foregroundColor(viewModel.isGoodNews ? .green : .red)
+                    .font(.system(size: 44))
+                    .foregroundColor(viewModel.isGoodNews ? .saBull : .saBear)
                 
-                VStack(alignment: .leading) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(viewModel.isGoodNews ? "Good News!" : "Prices Rising")
-                        .font(.headline)
+                        .font(.saHeadingMedium)
+                        .foregroundColor(.saTextPrimary)
+                    
                     Text("April prediction: \(viewModel.formattedAverageChange)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .font(.saBodyMedium)
+                        .foregroundColor(.saTextSecondary)
                 }
+                
                 Spacer()
             }
             
             Text("Based on current oil prices and ZAR/USD exchange rate")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.saCaption)
+                .foregroundColor(.saTextTertiary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, SASpacing.xs)
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
     }
     
     private var infoCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("📅 Next price adjustment")
-                .font(.subheadline)
-                .fontWeight(.medium)
-            Text("April 1, 2026 — announced by DMRE on the first Wednesday of each month")
-                .font(.caption)
-                .foregroundColor(.secondary)
+        SACard {
+            VStack(alignment: .leading, spacing: SASpacing.xs) {
+                HStack(spacing: SASpacing.xs) {
+                    Image(systemName: "calendar")
+                        .foregroundColor(.saPrimary)
+                    Text("Next price adjustment")
+                        .font(.saBodyMedium)
+                        .fontWeight(.medium)
+                }
+                
+                Text("April 1, 2026 — announced by DMRE on the first Wednesday of each month")
+                    .font(.saCaption)
+                    .foregroundColor(.saTextSecondary)
+            }
         }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
     }
 }
 
@@ -72,40 +91,44 @@ struct FuelCard: View {
     let fuel: FuelPrice
     
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(fuel.type)
-                    .font(.body)
-                    .fontWeight(.medium)
-                Text(fuel.effectiveDate)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(fuel.formattedPrice)
-                    .font(.body)
-                    .fontWeight(.semibold)
+        SAMarketCard(isPositive: !fuel.isPositive) {  // Inverted: fuel price increase = bad = red
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(fuel.type)
+                        .font(.saBodyLarge)
+                        .fontWeight(.medium)
+                        .foregroundColor(.saTextPrimary)
+                    
+                    Text(fuel.effectiveDate)
+                        .font(.saCaption)
+                        .foregroundColor(.saTextSecondary)
+                }
                 
-                Text(fuel.formattedChange)
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(fuel.isPositive ? Color.red : Color.green)
-                    .cornerRadius(4)
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(fuel.formattedPrice)
+                        .font(.saPrice)
+                        .foregroundColor(.saTextPrimary)
+                    
+                    Text(fuel.formattedChange)
+                        .font(.saCaption)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(!fuel.isPositive ? Color.saBull : Color.saBear)
+                        )
+                }
             }
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
     }
 }
 
 #Preview {
     FuelView()
         .environmentObject(FuelViewModel())
+        .environmentObject(HapticManager.shared)
 }
