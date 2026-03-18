@@ -13,35 +13,16 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: List available Xcode versions
-      run: ls /Applications/Xcode*.app 2>/dev/null || echo "Checking xcode-select..."
-    
-    - name: Select latest available Xcode
+    - name: Build
       run: |
-        # Try common versions, fall back to default
-        for version in "Xcode_16.2.app" "Xcode_16.1.app" "Xcode_16.app" "Xcode_15.4.app" "Xcode_15.2.app"; do
-          if [ -d "/Applications/$version" ]; then
-            echo "Found $version"
-            sudo xcode-select -s "/Applications/$version"
-            exit 0
-          fi
-        done
-        echo "Using default Xcode"
-      
-    - name: Build iOS app
+        SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
+        swift build \
+          -Xswiftc -sdk -Xswiftc "$SDK_PATH" \
+          -Xswiftc -target -Xswiftc arm64-apple-ios17.0-simulator
+
+    - name: Test
       run: |
-        xcodebuild build \
-          -scheme SA-MarketWatch \
-          -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
-          -skipPackagePluginValidation \
-          CODE_SIGN_IDENTITY="" \
-          CODE_SIGNING_REQUIRED=NO
-          
-    - name: Run tests
-      run: |
-        xcodebuild test \
-          -scheme SA-MarketWatch \
-          -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
-          -skipPackagePluginValidation \
-          CODE_SIGN_IDENTITY="" \
-          CODE_SIGNING_REQUIRED=NO || true
+        SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
+        swift test \
+          -Xswiftc -sdk -Xswiftc "$SDK_PATH" \
+          -Xswiftc -target -Xswiftc arm64-apple-ios17.0-simulator || true
