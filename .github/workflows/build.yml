@@ -13,47 +13,41 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Build
+    - name: Create and boot simulator
       run: |
-        # Find latest iOS runtime
-        IOS_RUNTIME=$(xcrun simctl list runtimes -j | jq -r '.runtimes[] | select(.platform=="iOS" and .isAvailable==true) | .identifier' | sort -V | tail -1)
-        echo "Using iOS runtime: $IOS_RUNTIME"
+        # Values observed from the runner's available simctl list
+        RUNTIME="com.apple.CoreSimulator.SimRuntime.iOS-18-5"
+        DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro"
         
-        # Find an iPhone device type (prefer non-Pro, non-Plus, non-Max)
-        DEVICE_TYPE=$(xcrun simctl list devicetypes -j | jq -r '.deviceTypes[] | select(.name | test("iPhone.*[0-9]$") and test("iPhone") and not (.name | test("Pro|Plus|Max"))) | .identifier' | head -1)
-        
-        # If no non-Pro found, take any iPhone
-        if [ -z "$DEVICE_TYPE" ]; then
-          DEVICE_TYPE=$(xcrun simctl list devicetypes -j | jq -r '.deviceTypes[] | select(.name | test("iPhone")) | .identifier' | head -1)
-        fi
-        
-        echo "Using device type: $DEVICE_TYPE"
+        echo "Creating simulator with runtime: $RUNTIME"
+        echo "Device type: $DEVICE_TYPE"
         
         # Create simulator
-        SIMULATOR_UDID=$(xcrun simctl create "CI_Test_Sim" "$DEVICE_TYPE" "$IOS_RUNTIME")
-        echo "Created simulator with UDID: $SIMULATOR_UDID"
+        UDID=$(xcrun simctl create "CI_Sim" "$DEVICE_TYPE" "$RUNTIME")
+        echo "Created simulator UDID: $UDID"
         
         # Boot simulator
-        xcrun simctl boot "$SIMULATOR_UDID" >/dev/null 2>&1 || true
-        
-        # Wait a bit for boot
+        xcrun simctl boot "$UDID" 2>/dev/null || true
         sleep 10
         
-        # Verify it's booted
-        STATE=$(xcrun simctl list devices -j | jq -r ".devices[\"$IOS_RUNTIME\"][] | select(.udid==\"$SIMULATOR_UDID\") | .state" 2>/dev/null || echo "unknown")
+        # Verify boot state
+        STATE=$(xcrun simctl list -j | jq -r ".devices[\"$RUNTIME\"][] | select(.udid==\"$UDID\") | .state" 2>/dev/null || echo "unknown")
         echo "Simulator state: $STATE"
         
-        # Build
-        echo "Building..."
+        # Export for later steps
+        echo "SIMULATOR_UDID=$UDID" >> $GITHUB_ENV
+    
+    - name: Build
+      run: |
         xcodebuild build \
           -scheme SA-MarketWatch \
           -destination "id=$SIMULATOR_UDID" \
           -skipPackagePluginValidation \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO
-        
-        # Test
-        echo "Testing..."
+    
+    - name: Test
+      run: |
         xcodebuild test \
           -scheme SA-MarketWatch \
           -destination "id=$SIMULATOR_UDID" \
