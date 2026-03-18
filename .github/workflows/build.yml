@@ -13,8 +13,20 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_15.2.app
+    - name: List available Xcode versions
+      run: ls /Applications/Xcode*.app 2>/dev/null || echo "Checking xcode-select..."
+    
+    - name: Select latest available Xcode
+      run: |
+        # Try common versions, fall back to default
+        for version in "Xcode_16.2.app" "Xcode_16.1.app" "Xcode_16.app" "Xcode_15.4.app" "Xcode_15.2.app"; do
+          if [ -d "/Applications/$version" ]; then
+            echo "Found $version"
+            sudo xcode-select -s "/Applications/$version"
+            exit 0
+          fi
+        done
+        echo "Using default Xcode"
       
     - name: Build iOS app
       run: |
