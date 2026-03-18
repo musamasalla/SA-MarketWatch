@@ -213,7 +213,8 @@ class APIService {
         
         struct SearchResponse: Codable { let coins: [CoinSearchResult] }
         
-        return try await rateLimitedRequest(url: url, cacheKey: "search_\(query)", cacheTTL: 300).coins
+        let response: SearchResponse = try await rateLimitedRequest(url: url, cacheKey: "search_\(query)", cacheTTL: 300)
+        return response.coins
     }
     
     func fetchZARRate() async throws -> Double {
