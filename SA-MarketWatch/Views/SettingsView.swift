@@ -208,8 +208,9 @@ struct SettingsView: View {
     private func calculateCacheSize() {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         if let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
-            let total = files.reduce(0) { size, url in
-                (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) + size
+            let total = files.reduce(0) { size, url -> Int in
+                let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+                return fileSize + size
             }
             cacheSize = ByteCountFormatter.string(fromByteCount: Int64(total), countStyle: .file)
         }

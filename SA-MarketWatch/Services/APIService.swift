@@ -74,7 +74,7 @@ class APIService {
     
     // MARK: - Rate Limited Request
     
-    private func rateLimitedRequest<T: Decodable>(
+    private func rateLimitedRequest<T: Codable>(
         url: URL,
         cacheKey: String? = nil,
         cacheTTL: TimeInterval = 60

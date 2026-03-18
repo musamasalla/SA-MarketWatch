@@ -117,16 +117,19 @@ class CoinSearchViewModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     
     init() {
+        // Debounced search using Task.sleep
         Task {
-            for await _ in $query.values.debounce(for: .milliseconds(300), scheduler: DispatchQueue.main) {
-                guard !query.isEmpty else {
-                    results = []
-                    return
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 500ms debounce
+                if !query.isEmpty && query != lastSearchedQuery {
+                    lastSearchedQuery = query
+                    await search()
                 }
-                await search()
             }
         }
     }
+    
+    private var lastSearchedQuery = ""
     
     func search() async {
         searchTask?.cancel()

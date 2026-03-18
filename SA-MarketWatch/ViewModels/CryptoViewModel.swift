@@ -19,11 +19,9 @@ class CryptoViewModel: ObservableObject {
         isOffline = false
         
         do {
-            let ids = watchlist?.coinIds
+            let ids = watchlist?.coinIds ?? ["bitcoin", "ethereum", "ripple", "litecoin", "cardano", "solana", "polkadot", "dogecoin", "avalanche-2", "tron"]
             
-            async let cryptoTask = ids != nil ? 
-                api.fetchCustomCoins(ids: ids!) : 
-                api.fetchCryptoPrices()
+            async let cryptoTask = api.fetchCryptoPrices(ids: ids)
             async let zarTask = api.fetchZARRate()
             
             let (fetched, zar) = try await (cryptoTask, zarTask)

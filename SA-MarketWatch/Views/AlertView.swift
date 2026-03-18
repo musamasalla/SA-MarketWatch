@@ -145,6 +145,7 @@ struct CreateAlertView: View {
     @State private var selectedCoin: CryptoPrice?
     @State private var targetPrice = ""
     @State private var isAbove = true
+    @State private var showingCoinPicker = false
     
     var body: some View {
         NavigationStack {
@@ -152,14 +153,23 @@ struct CreateAlertView: View {
                 Section("Select Coin") {
                     if cryptoVM.prices.isEmpty {
                         SALoadingView(message: "Loading coins...")
-                    } else {
-                        Picker("Coin", selection: $selectedCoin) {
-                            Text("Choose a coin").tag(nil as CryptoPrice?)
-                            ForEach(cryptoVM.prices) { coin in
-                                Text("\(coin.name) (\(coin.symbol.uppercased()))")
-                                    .tag(coin as CryptoPrice?)
-                            }
+                    } else if let selected = selectedCoin {
+                        HStack {
+                            Text(selected.name)
+                                .foregroundColor(.saTextPrimary)
+                            Spacer()
+                            Text(selected.formattedPrice)
+                                .foregroundColor(.saTextSecondary)
                         }
+                        Button("Change Coin") {
+                            showingCoinPicker = true
+                        }
+                        .foregroundColor(.saPrimary)
+                    } else {
+                        Button("Choose a Coin") {
+                            showingCoinPicker = true
+                        }
+                        .foregroundColor(.saPrimary)
                     }
                 }
                 
@@ -224,6 +234,49 @@ struct CreateAlertView: View {
                     Button("Cancel") {
                         haptic.light()
                         dismiss()
+                    }
+                }
+            }
+            .sheet(isPresented: $showingCoinPicker) {
+                NavigationStack {
+                    List(cryptoVM.prices) { coin in
+                        Button {
+                            selectedCoin = coin
+                            haptic.selection()
+                            showingCoinPicker = false
+                        } label: {
+                            HStack {
+                                AsyncImage(url: URL(string: coin.image)) { img in
+                                    img.resizable()
+                                } placeholder: {
+                                    Circle().fill(Color.saSurfaceSecondary)
+                                }
+                                .frame(width: 32, height: 32)
+                                
+                                VStack(alignment: .leading) {
+                                    Text(coin.name)
+                                        .foregroundColor(.saTextPrimary)
+                                    Text(coin.symbol.uppercased())
+                                        .font(.saCaption)
+                                        .foregroundColor(.saTextSecondary)
+                                }
+                                
+                                Spacer()
+                                
+                                if selectedCoin?.id == coin.id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.saPrimary)
+                                }
+                            }
+                        }
+                    }
+                    .navigationTitle("Select Coin")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") {
+                                showingCoinPicker = false
+                            }
+                        }
                     }
                 }
             }
