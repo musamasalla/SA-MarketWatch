@@ -13,16 +13,78 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Build
+    - name: Setup Simulator & Build
       run: |
-        SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
-        swift build \
-          -Xswiftc -sdk -Xswiftc "$SDK_PATH" \
-          -Xswiftc -target -Xswiftc arm64-apple-ios17.0-simulator
-
-    - name: Test
-      run: |
-        SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
-        swift test \
-          -Xswiftc -sdk -Xswiftc "$SDK_PATH" \
-          -Xswiftc -target -Xswiftc arm64-apple-ios17.0-simulator || true
+        set -e
+        
+        # Show what we have
+        echo "=== Available Xcode ==="
+        xcodebuild -version
+        
+        echo "=== Available Runtimes ==="
+        xcrun simctl list runtimes
+        
+        echo "=== Available Device Types ==="
+        xcrun simctl list devicetypes | grep iPhone | head -5
+        
+        # Get the first available iOS runtime
+        RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "
+        import json, sys
+        data = json.load(sys.stdin)
+        for r in data.get('runtimes', []):
+            if r.get('platform') == 'iOS' and r.get('isAvailable'):
+                print(r['identifier'])
+                break
+        " 2>/dev/null)
+        
+        if [ -z "$RUNTIME" ]; then
+          echo "No iOS runtime found, trying to download..."
+          xcodebuild -downloadPlatform iOS
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for r in data.get('runtimes', []):
+              if r.get('platform') == 'iOS' and r.get('isAvailable'):
+                  print(r['identifier'])
+                  break
+          ")
+        fi
+        
+        echo "Using runtime: $RUNTIME"
+        
+        # Find a device type that exists
+        DEVICE_TYPE=$(xcrun simctl list devicetypes -j | python3 -c "
+        import json, sys
+        data = json.load(sys.stdin)
+        for d in data.get('deviceTypes', []):
+            if 'iPhone' in d['name'] and 'Pro' not in d['name'] and 'Plus' not in d['name'] and 'Max' not in d['name']:
+                print(d['identifier'])
+                break
+        " 2>/dev/null || echo "com.apple.CoreSimulator.SimDeviceType.iPhone-15")
+        
+        echo "Device type: $DEVICE_TYPE"
+        
+        # Create simulator
+        UDID=$(xcrun simctl create "CITest" "$DEVICE_TYPE" "$RUNTIME" 2>&1)
+        echo "Created: $UDID"
+        
+        # Boot it
+        xcrun simctl boot "$UDID" 2>/dev/null || true
+        
+        # Build
+        echo "=== Building ==="
+        xcodebuild build \
+          -scheme SA-MarketWatch \
+          -destination "id=$UDID" \
+          -skipPackagePluginValidation \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO
+        
+        # Test
+        echo "=== Testing ==="
+        xcodebuild test \
+          -scheme SA-MarketWatch \
+          -destination "id=$UDID" \
+          -skipPackagePluginValidation \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO || true
